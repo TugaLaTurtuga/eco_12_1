@@ -308,7 +308,7 @@
                         startScrolling();
                     }
                 } else {
-                    moveSidebar(true)
+                    moveSidebar(false)
                 }
             } else if (e.key === "PageDown") {
                 e.preventDefault();
@@ -324,7 +324,7 @@
                     }
 
                 } else {
-                    moveSidebar(false)
+                    moveSidebar(true)
                 }
             } else if (e.key === "Shift") {
                 scrollIsHorizontal = true;
