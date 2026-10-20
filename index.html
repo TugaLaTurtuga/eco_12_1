@@ -336,7 +336,7 @@
         function startScrolling() {
             scrolling = true;
             let lastTime = null;
-            const speed = 300; // pixels per second
+            const speed = 200; // pixels per second
             const sheet = document.querySelector("#sheet-container");
 
             function frame(timestamp) {
@@ -347,10 +347,32 @@
 
                     if (scrollIsHorizontal) {
                         scrollPlace[0] += distance * scrollDirection;
-                        if (scrollPlace[0] < 0) scrollPlace[0] = 0;
+
+                        const maxScrollX = sheet.scrollWidth - sheet.clientWidth;
+                        scrollPlace[0] = Math.max(0, Math.min(scrollPlace[0], maxScrollX));
+
+                        if (
+                            (scrollDirection > 0 && scrollPlace[0] >= maxScrollX) ||
+                            (scrollDirection < 0 && scrollPlace[0] <= 0)
+                        ) {
+                            sheet.scrollTo(scrollPlace[0], scrollPlace[1]);
+                            stopScrolling();
+                            return;
+                        }
                     } else {
                         scrollPlace[1] += distance * scrollDirection;
-                        if (scrollPlace[1] < 0) scrollPlace[1] = 0;
+
+                        const maxScrollY = sheet.scrollHeight - sheet.clientHeight;
+                        scrollPlace[1] = Math.max(0, Math.min(scrollPlace[1], maxScrollY));
+
+                        if (
+                            (scrollDirection > 0 && scrollPlace[1] >= maxScrollY) ||
+                            (scrollDirection < 0 && scrollPlace[1] <= 0)
+                        ) {
+                            sheet.scrollTo(scrollPlace[0], scrollPlace[1]);
+                            stopScrolling();
+                            return;
+                        }
                     }
                     sheet.scrollTo(scrollPlace[0], scrollPlace[1]);
                 }
@@ -359,9 +381,8 @@
                 scrollAnimation = requestAnimationFrame(frame);
             }
 
-            scrollAnimation = requestAnimationFrame(frame);
-        }
-
+    scrollAnimation = requestAnimationFrame(frame);
+}
         function stopScrolling() {
             scrolling = false;
 
