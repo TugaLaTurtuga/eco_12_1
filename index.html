@@ -82,145 +82,138 @@
             sidebarDiv.appendChild(button);
         }
 
-        // Open the window and load the selected year
+        // Keep sidebar and window visibility in sync.
+        function setWindowOpen(isOpen) {
+            viewer.classList.toggle("open", isOpen);
+            document.body.classList.toggle("window-open", isOpen);
+            sidebarDiv.setAttribute("aria-hidden", String(isOpen));
+        }
+
+        // Open the window and load the selected year.
         async function openxlsxFile(file, year) {
-            // Open only if currently closed
-            viewer.classList.add("open");
+            const wasOpen = viewer.classList.contains("open");
+            setWindowOpen(true);
 
-            // Update the window title
+            // Position the window once, centered. Subsequent opens preserve its
+            // last user-chosen position and size instead of snapping to a corner.
+            if (!viewer.dataset.positioned) {
+                viewer.style.position = "fixed";
+                viewer.style.left = Math.max(0, (window.innerWidth - viewer.offsetWidth) / 2) + "px";
+                viewer.style.top = Math.max(0, (window.innerHeight - viewer.offsetHeight) / 2) + "px";
+                viewer.style.right = "auto";
+                viewer.style.bottom = "auto";
+                viewer.style.transform = "none";
+                viewer.dataset.positioned = "true";
+            }
+
             windowTitle.textContent = `IRS - ${year}`;
-
-            // Prevent older requests from overwriting newer selections
             const requestId = ++currentRequest;
-
             headerDiv.textContent = `Loading ${year}...`;
             sheetContainer.innerHTML = "";
 
             try {
                 const response = await fetch(file);
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error: ${response.status}`);
-                }
-
+                if (!response.ok) throw new Error(`HTTP error: ${response.status}`);
                 const arrayBuffer = await response.arrayBuffer();
-
-                const workbook = XLSX.read(arrayBuffer, {
-                    type: "array"
-                });
-
-                // Ignore results from an older request
+                const workbook = XLSX.read(arrayBuffer, { type: "array" });
                 if (requestId !== currentRequest) return;
 
                 const sheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[sheetName];
-
-                const html = XLSX.utils.sheet_to_html(worksheet, {
-                    editable: false
-                });
-
+                sheetContainer.innerHTML = XLSX.utils.sheet_to_html(worksheet, { editable: false });
                 headerDiv.textContent = `${year} — ${sheetName}`;
-                sheetContainer.innerHTML = html;
-
             } catch (error) {
                 if (requestId !== currentRequest) return;
-
                 console.error("Failed to load Excel file:", error);
-
                 headerDiv.textContent = `Unable to load ${year}`;
-
                 sheetContainer.textContent =
-                    "The file could not be loaded. Check that it exists " +
-                    "and that the server is serving it correctly.";
+                    "The file could not be loaded. Check that it exists and that the server is serving it correctly.";
             }
         }
 
-        // Close the window
         closeButton.addEventListener("click", (event) => {
+            event.stopPropagation();
             closeWindow();
         });
 
         function closeWindow() {
-            event.stopPropagation();
-
-            viewer.classList.remove("open");
-
-            // Invalidate any request still in progress
+            setWindowOpen(false);
             ++currentRequest;
         }
 
-        // Drag the window by its title bar
+        // Drag the window using the title bar.
         let dragging = false;
         let dragOffsetX = 0;
         let dragOffsetY = 0;
+        let dragPointerId = null;
 
         titlebar.addEventListener("pointerdown", (event) => {
-            if (event.target.closest("button")) return;
-            if (event.button !== 0) return;
+            if (!viewer.classList.contains("open")) return;
+            if (event.target.closest("button") || event.button !== 0) return;
 
             dragging = true;
-
+            dragPointerId = event.pointerId;
             const rect = viewer.getBoundingClientRect();
-
             dragOffsetX = event.clientX - rect.left;
             dragOffsetY = event.clientY - rect.top;
 
+            // Remove any CSS corner anchoring so left/top fully control position.
+            viewer.style.right = "auto";
+            viewer.style.bottom = "auto";
+            viewer.style.transform = "none";
             titlebar.setPointerCapture(event.pointerId);
             event.preventDefault();
         });
 
         titlebar.addEventListener("pointermove", (event) => {
-            if (!dragging) return;
-
-            const maxX = window.innerWidth - viewer.offsetWidth;
-            const maxY = window.innerHeight - viewer.offsetHeight;
-
-            viewer.style.left = Math.max(
-                0,
-                Math.min(event.clientX - dragOffsetX, maxX)
-            ) + "px";
-
-            viewer.style.top = Math.max(
-                0,
-                Math.min(event.clientY - dragOffsetY, maxY)
-            ) + "px";
+            if (!dragging || event.pointerId !== dragPointerId) return;
+            const maxX = Math.max(0, window.innerWidth - viewer.offsetWidth);
+            const maxY = Math.max(0, window.innerHeight - viewer.offsetHeight);
+            const left = Math.max(0, Math.min(event.clientX - dragOffsetX, maxX));
+            const top = Math.max(0, Math.min(event.clientY - dragOffsetY, maxY));
+            viewer.style.left = left + "px";
+            viewer.style.top = top + "px";
         });
 
-        function stopDragging() {
+        function stopDragging(event) {
+            if (event && dragPointerId !== null && event.pointerId !== dragPointerId) return;
             dragging = false;
+            dragPointerId = null;
         }
 
         titlebar.addEventListener("pointerup", stopDragging);
         titlebar.addEventListener("pointercancel", stopDragging);
 
-        // Resize the window from its edges and corners
+        // Resize from any edge/corner, like a desktop window.
         let resizing = false;
         let resizeDirection = "";
-        let startX = 0;
-        let startY = 0;
-        let startLeft = 0;
-        let startTop = 0;
-        let startWidth = 0;
-        let startHeight = 0;
-
+        let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+        let startWidth = 0, startHeight = 0;
+        let resizePointerId = null;
         const MIN_WIDTH = 320;
         const MIN_HEIGHT = 200;
 
-        document.querySelectorAll(".resize-handle").forEach(handle => {
+        document.querySelectorAll(".resize-handle").forEach((handle) => {
             handle.addEventListener("pointerdown", (event) => {
-                if (!viewer.classList.contains("open")) return;
-                if (event.button !== 0) return;
-
+                if (!viewer.classList.contains("open") || event.button !== 0) return;
                 event.preventDefault();
                 event.stopPropagation();
 
                 const rect = viewer.getBoundingClientRect();
-
                 resizing = true;
-                resizeDirection = [...handle.classList]
-                    .find(name => name.startsWith("resize-"))
-                    .replace("resize-", "");
-
+                resizePointerId = event.pointerId;
+                // Ignore the generic "resize-handle" class; use only the
+                // directional class (n, s, e, w, ne, nw, se, sw).
+                const directionClass = [...handle.classList].find((name) =>
+                    ["resize-n", "resize-s", "resize-e", "resize-w",
+                     "resize-ne", "resize-nw", "resize-se", "resize-sw"].includes(name)
+                );
+                if (!directionClass) {
+                    resizing = false;
+                    resizePointerId = null;
+                    return;
+                }
+                resizeDirection = directionClass.slice("resize-".length);
                 startX = event.clientX;
                 startY = event.clientY;
                 startLeft = rect.left;
@@ -228,54 +221,58 @@
                 startWidth = rect.width;
                 startHeight = rect.height;
 
+                viewer.style.right = "auto";
+                viewer.style.bottom = "auto";
+                viewer.style.transform = "none";
                 handle.setPointerCapture(event.pointerId);
             });
 
             handle.addEventListener("pointermove", (event) => {
-                if (!resizing) return;
-
+                if (!resizing || event.pointerId !== resizePointerId) return;
                 const dx = event.clientX - startX;
                 const dy = event.clientY - startY;
+                let left = startLeft, top = startTop;
+                let width = startWidth, height = startHeight;
 
-                let left = startLeft;
-                let top = startTop;
-                let width = startWidth;
-                let height = startHeight;
-
-                if (resizeDirection.includes("e")) {
-                    width = Math.max(MIN_WIDTH, startWidth + dx);
-                }
-
-                if (resizeDirection.includes("s")) {
-                    height = Math.max(MIN_HEIGHT, startHeight + dy);
-                }
-
+                if (resizeDirection.includes("e")) width = Math.max(MIN_WIDTH, startWidth + dx);
+                if (resizeDirection.includes("s")) height = Math.max(MIN_HEIGHT, startHeight + dy);
                 if (resizeDirection.includes("w")) {
                     width = Math.max(MIN_WIDTH, startWidth - dx);
                     left = startLeft + startWidth - width;
                 }
-
                 if (resizeDirection.includes("n")) {
                     height = Math.max(MIN_HEIGHT, startHeight - dy);
                     top = startTop + startHeight - height;
                 }
 
-                // Keep the window inside the viewport
-                width = Math.min(width, window.innerWidth - left);
-                height = Math.min(height, window.innerHeight - top);
+                // Keep the whole window inside the visible viewport.
+                width = Math.min(width, window.innerWidth);
+                height = Math.min(height, window.innerHeight);
+                left = Math.max(0, Math.min(left, window.innerWidth - width));
+                top = Math.max(0, Math.min(top, window.innerHeight - height));
 
-                viewer.style.left = Math.max(0, left) + "px";
-                viewer.style.top = Math.max(0, top) + "px";
+                viewer.style.left = left + "px";
+                viewer.style.top = top + "px";
                 viewer.style.width = width + "px";
                 viewer.style.height = height + "px";
             });
 
-            function stopResizing() {
+            function stopResizing(event) {
+                if (event && resizePointerId !== null && event.pointerId !== resizePointerId) return;
                 resizing = false;
+                resizePointerId = null;
             }
-
             handle.addEventListener("pointerup", stopResizing);
             handle.addEventListener("pointercancel", stopResizing);
+        });
+
+        window.addEventListener("resize", () => {
+            if (!viewer.dataset.positioned) return;
+            const rect = viewer.getBoundingClientRect();
+            viewer.style.left = Math.max(0, Math.min(rect.left, window.innerWidth - Math.min(rect.width, window.innerWidth))) + "px";
+            viewer.style.top = Math.max(0, Math.min(rect.top, window.innerHeight - Math.min(rect.height, window.innerHeight))) + "px";
+            viewer.style.width = Math.min(rect.width, window.innerWidth) + "px";
+            viewer.style.height = Math.min(rect.height, window.innerHeight) + "px";
         });
 
         let scrolling = false;
@@ -290,10 +287,10 @@
                 scrollPlace = [0, 0];
                 if (viewer.classList.contains("open")) {
                     closeWindow();
-                    moveSidebar(null);
+                    if (selectedYear >= 0) moveSidebar(null);
                 } else {
-                    document.activeElement.click();
-                    document.querySelector("#sheet-container").focus();
+                    const selectedButton = document.querySelector(`#year-button-${selectedYear >= 0 ? selectedYear : 0}`);
+                    if (selectedButton) selectedButton.click();
                 }
             } else if (e.key === "PageUp") {
                 e.preventDefault();
@@ -328,12 +325,10 @@
                 }
             } else if (e.key === "Shift") {
                 scrollIsHorizontal = true;
-                stopScrolling();
                 scrollDirection = 0;
 
             } else if (e.key === "Escape") {
                 scrollIsHorizontal = false;
-                stopScrolling();
                 scrollDirection = 0;
             }
         });
