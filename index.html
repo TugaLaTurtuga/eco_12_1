@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>ECO</title>
+    <link rel="stylesheet" href="css/style.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+    <div class="sidebar" id="sidebar"></div>
+
+    <!-- Excel window -->
+    <div class="xlsx-viewer" id="xlsx-viewer">
+
+        <!-- Window title bar -->
+        <div class="window-titlebar" id="window-titlebar">
+            <span id="window-title">Excel Viewer</span>
+
+            <button
+                class="close-button"
+                id="close-button"
+                aria-label="Close window"
+                title="Close"
+            >×</button>
+        </div>
+
+        <!-- Excel content -->
+        <div class="window-content">
+            <div class="header" id="header">
+                Select a year to load an Excel file.
+            </div>
+
+            <div id="sheet-container"></div>
+        </div>
+
+        <!-- Resize handles -->
+        <div class="resize-handle resize-n"></div>
+        <div class="resize-handle resize-s"></div>
+        <div class="resize-handle resize-e"></div>
+        <div class="resize-handle resize-w"></div>
+        <div class="resize-handle resize-ne"></div>
+        <div class="resize-handle resize-nw"></div>
+        <div class="resize-handle resize-se"></div>
+        <div class="resize-handle resize-sw"></div>
+
+    </div>
+
+    <script>
+        const time = [2004, 2026];
+
+        const irs_url = "tabels/irs/Tabelas_RF_Continente_${}.xlsx";
+
+        const sidebarDiv = document.querySelector("#sidebar");
+        const viewer = document.querySelector("#xlsx-viewer");
+        const titlebar = document.querySelector("#window-titlebar");
+        const windowTitle = document.querySelector("#window-title");
+        const closeButton = document.querySelector("#close-button");
+        const headerDiv = document.querySelector("#header");
+        const sheetContainer = document.querySelector("#sheet-container");
+
+        let currentRequest = 0;
+        let selectedYear = -1;
+
+        // Create a button for every year
+        for (let i = time[1]; i >= time[0]; --i) {
+            const button = document.createElement("div");
+
+            button.classList.add("year-button");
+            button.id = `year-button-${(i - time[1]) * -1}`
+            button.textContent = i;
+            button.tabIndex = 0;
+
+            button.onclick = () => openxlsxFile(
+                irs_url.replace("${}", i),
+                i
+            );
+
+            sidebarDiv.appendChild(button);
+        }
+
+        // Open the window and load the selected year
+        async function openxlsxFile(file, year) {
+            // Open only if currently closed
+            viewer.classList.add("open");
+
+            // Update the window title
+            windowTitle.textContent = `IRS - ${year}`;
+
+            // Prevent older requests from overwriting newer selections
+            const requestId = ++currentRequest;
+
+            headerDiv.textContent = `Loading ${year}...`;
+            sheetContainer.innerHTML = "";
+
+            try {
+                const response = await fetch(file);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error: ${response.status}`);
+                }
+
+                const arrayBuffer = await response.arrayBuffer();
+
+                const workbook = XLSX.read(arrayBuffer, {
+                    type: "array"
+                });
+
+                // Ignore results from an older request
+                if (requestId !== currentRequest) return;
+
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+
+                const html = XLSX.utils.sheet_to_html(worksheet, {
+                    editable: false
+                });
+
+                headerDiv.textContent = `${year} — ${sheetName}`;
+                sheetContainer.innerHTML = html;
+
+            } catch (error) {
+                if (requestId !== currentRequest) return;
+
+                console.error("Failed to load Excel file:", error);
+
+                headerDiv.textContent = `Unable to load ${year}`;
+
+                sheetContainer.textContent =
+                    "The file could not be loaded. Check that it exists " +
+                    "and that the server is serving it correctly.";
+            }
+        }
+
+        // Close the window
+        closeButton.addEventListener("click", (event) => {
+            closeWindow();
+        });
+
+        function closeWindow() {
+            event.stopPropagation();
+
+            viewer.classList.remove("open");
+
+            // Invalidate any request still in progress
+            ++currentRequest;
+        }
+
+        // Drag the window by its title bar
+        let dragging = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        titlebar.addEventListener("pointerdown", (event) => {
+            if (event.target.closest("button")) return;
+            if (event.button !== 0) return;
+
+            dragging = true;
+
+            const rect = viewer.getBoundingClientRect();
+
+            dragOffsetX = event.clientX - rect.left;
+            dragOffsetY = event.clientY - rect.top;
+
+            titlebar.setPointerCapture(event.pointerId);
+            event.preventDefault();
+        });
+
+        titlebar.addEventListener("pointermove", (event) => {
+            if (!dragging) return;
+
+            const maxX = window.innerWidth - viewer.offsetWidth;
+            const maxY = window.innerHeight - viewer.offsetHeight;
+
+            viewer.style.left = Math.max(
+                0,
+                Math.min(event.clientX - dragOffsetX, maxX)
+            ) + "px";
+
+            viewer.style.top = Math.max(
+                0,
+                Math.min(event.clientY - dragOffsetY, maxY)
+            ) + "px";
+        });
+
+        function stopDragging() {
+            dragging = false;
+        }
+
+        titlebar.addEventListener("pointerup", stopDragging);
+        titlebar.addEventListener("pointercancel", stopDragging);
+
+        // Resize the window from its edges and corners
+        let resizing = false;
+        let resizeDirection = "";
+        let startX = 0;
+        let startY = 0;
+        let startLeft = 0;
+        let startTop = 0;
+        let startWidth = 0;
+        let startHeight = 0;
+
+        const MIN_WIDTH = 320;
+        const MIN_HEIGHT = 200;
+
+        document.querySelectorAll(".resize-handle").forEach(handle => {
+            handle.addEventListener("pointerdown", (event) => {
+                if (!viewer.classList.contains("open")) return;
+                if (event.button !== 0) return;
+
+                event.preventDefault();
+                event.stopPropagation();
+
+                const rect = viewer.getBoundingClientRect();
+
+                resizing = true;
+                resizeDirection = [...handle.classList]
+                    .find(name => name.startsWith("resize-"))
+                    .replace("resize-", "");
+
+                startX = event.clientX;
+                startY = event.clientY;
+                startLeft = rect.left;
+                startTop = rect.top;
+                startWidth = rect.width;
+                startHeight = rect.height;
+
+                handle.setPointerCapture(event.pointerId);
+            });
+
+            handle.addEventListener("pointermove", (event) => {
+                if (!resizing) return;
+
+                const dx = event.clientX - startX;
+                const dy = event.clientY - startY;
+
+                let left = startLeft;
+                let top = startTop;
+                let width = startWidth;
+                let height = startHeight;
+
+                if (resizeDirection.includes("e")) {
+                    width = Math.max(MIN_WIDTH, startWidth + dx);
+                }
+
+                if (resizeDirection.includes("s")) {
+                    height = Math.max(MIN_HEIGHT, startHeight + dy);
+                }
+
+                if (resizeDirection.includes("w")) {
+                    width = Math.max(MIN_WIDTH, startWidth - dx);
+                    left = startLeft + startWidth - width;
+                }
+
+                if (resizeDirection.includes("n")) {
+                    height = Math.max(MIN_HEIGHT, startHeight - dy);
+                    top = startTop + startHeight - height;
+                }
+
+                // Keep the window inside the viewport
+                width = Math.min(width, window.innerWidth - left);
+                height = Math.min(height, window.innerHeight - top);
+
+                viewer.style.left = Math.max(0, left) + "px";
+                viewer.style.top = Math.max(0, top) + "px";
+                viewer.style.width = width + "px";
+                viewer.style.height = height + "px";
+            });
+
+            function stopResizing() {
+                resizing = false;
+            }
+
+            handle.addEventListener("pointerup", stopResizing);
+            handle.addEventListener("pointercancel", stopResizing);
+        });
+
+        let scrolling = false;
+        let scrollDirection = 0;
+        let scrollIsHorizontal = false;
+        let scrollAnimation = null;
+        let scrollPlace = [0, 0]
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === "b") {
+                e.preventDefault();
+                scrollPlace = [0, 0];
+                if (viewer.classList.contains("open")) {
+                    closeWindow();
+                    moveSidebar(null);
+                } else {
+                    document.activeElement.click();
+                    document.querySelector("#sheet-container").focus();
+                }
+            } else if (e.key === "PageUp") {
+                e.preventDefault();
+                if (viewer.classList.contains("open")) {
+                    if (scrolling && scrollDirection === -1) {
+                        stopScrolling();
+                        scrollDirection = 0;
+                    } else {
+                        // Start scrolling, or reverse direction.
+                        stopScrolling();
+                        scrollDirection = -1;
+                        startScrolling();
+                    }
+                } else {
+                    moveSidebar(true)
+                }
+            } else if (e.key === "PageDown") {
+                e.preventDefault();
+                if (viewer.classList.contains("open")) {
+                    if (scrolling && scrollDirection === 1) {
+                        stopScrolling();
+                        scrollDirection = 0;
+                    } else {
+                        // Start scrolling, or reverse direction.
+                        stopScrolling();
+                        scrollDirection = 1;
+                        startScrolling();
+                    }
+
+                } else {
+                    moveSidebar(false)
+                }
+            } else if (e.key === "Shift") {
+                scrollIsHorizontal = true;
+                stopScrolling();
+                scrollDirection = 0;
+
+            } else if (e.key === "Escape") {
+                scrollIsHorizontal = false;
+                stopScrolling();
+                scrollDirection = 0;
+            }
+        });
+
+        function startScrolling() {
+            scrolling = true;
+            let lastTime = null;
+            const speed = 300; // pixels per second
+            const sheet = document.querySelector("#sheet-container");
+
+            function frame(timestamp) {
+                if (!scrolling) return;
+
+                if (lastTime !== null) {
+                    const distance = speed * (timestamp - lastTime) / 1000;
+
+                    if (scrollIsHorizontal) {
+                        scrollPlace[0] += distance * scrollDirection;
+                        if (scrollPlace[0] < 0) scrollPlace[0] = 0;
+                    } else {
+                        scrollPlace[1] += distance * scrollDirection;
+                        if (scrollPlace[1] < 0) scrollPlace[1] = 0;
+                    }
+                    sheet.scrollTo(scrollPlace[0], scrollPlace[1]);
+                }
+
+                lastTime = timestamp;
+                scrollAnimation = requestAnimationFrame(frame);
+            }
+
+            scrollAnimation = requestAnimationFrame(frame);
+        }
+
+        function stopScrolling() {
+            scrolling = false;
+
+            if (scrollAnimation !== null) {
+                cancelAnimationFrame(scrollAnimation);
+                scrollAnimation = null;
+            }
+        }
+
+        function moveSidebar(up = true) {
+            if (up !== null) {
+                let totalYears = document.querySelectorAll(".year-button").length;
+                selectedYear = up ? (selectedYear + 1) % totalYears : (selectedYear - 1 + totalYears) % totalYears;
+            }
+
+            document.querySelector(`#year-button-${selectedYear}`).focus();
+
+            console.log("Selected year:", selectedYear);
+        }
+    </script>
+
+</body>
+</html>

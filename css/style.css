@@ -1,0 +1,259 @@
+@font-face {
+    font-family: "DepartureMono";
+    src: url("fonts/DepartureMono/DepartureMono-Regular.otf") format("truetype");
+    font-weight: 500;
+    font-style: normal;
+}
+
+body {
+	background: black;
+	color: white;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+    font: "DepartureMono";
+}
+
+/* Hide scrollbar for Chrome, Safari and Opera */
+*::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar for IE, Edge and Firefox */
+* {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.sidebar {
+	position: absolute;
+	left: 0;
+	top: 0;
+	min-width: 200px;
+	width: auto;
+	height: 100vh;
+	border-right: solid white 2px;
+	overflow-y: visible;
+	overflow-x: hidden;
+}
+
+.year-button {
+	text-align: center;
+	border-bottom: 1px solid white;
+	border-top: 1px solid white;
+	cursor: pointer;
+}
+
+.year-button:hover {
+    background: #444;
+}
+
+.year-button:focus {
+    background: #444;
+}
+
+.xlsx-viewer {
+    position: fixed;
+
+    top: 0;
+    left: calc(100vw - 700px);
+
+    width: 700px;
+    height: 500px;
+
+    display: none;
+    flex-direction: column;
+
+    background: #000;
+    color: #fff;
+
+    border: 1px solid #fff;
+
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.3);
+
+    z-index: 1000;
+
+    min-width: 320px;
+    min-height: 200px;
+
+    box-sizing: border-box;
+}
+
+/* Open state */
+.xlsx-viewer.open {
+    display: flex;
+}
+
+/* Title bar */
+.window-titlebar {
+    height: 38px;
+    flex-shrink: 0;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    padding: 0 8px 0 14px;
+
+    background: #1769aa;
+    color: white;
+
+
+    cursor: move;
+    user-select: none;
+    touch-action: none;
+}
+
+/* Window title */
+#window-title {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* Close button */
+.close-button {
+    width: 30px;
+    height: 30px;
+
+    border: none;
+
+    background: transparent;
+    color: white;
+
+    font-size: 24px;
+    line-height: 1;
+
+    cursor: pointer;
+}
+
+.close-button:hover {
+    background: #e81123;
+}
+
+/* Content area */
+.window-content {
+    display: flex;
+    flex-direction: column;
+
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+
+    overflow: hidden;
+}
+
+/* Sheet title and loading status */
+.header {
+    flex-shrink: 0;
+    padding: 10px 14px;
+
+    background: #333;
+    border-bottom: 1px solid #ddd;
+
+    font-weight: bold;
+}
+
+/* Excel sheet scrolling */
+#sheet-container {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+
+    overflow: auto;
+}
+
+/* Excel-generated table */
+#sheet-container table {
+    border-collapse: collapse;
+    white-space: nowrap;
+
+    font-size: 13px;
+}
+
+#sheet-container td,
+#sheet-container th {
+    border: 1px solid #999;
+    padding: 5px 8px;
+}
+
+/* Resize handles */
+.resize-handle {
+    position: absolute;
+    z-index: 10;
+
+    touch-action: none;
+}
+
+/* Edges */
+.resize-n,
+.resize-s {
+    left: 8px;
+    right: 8px;
+    height: 6px;
+    cursor: ns-resize;
+}
+
+.resize-n {
+    top: -3px;
+}
+
+.resize-s {
+    bottom: -3px;
+}
+
+.resize-e,
+.resize-w {
+    top: 8px;
+    bottom: 8px;
+    width: 6px;
+    cursor: ew-resize;
+}
+
+.resize-e {
+    right: -3px;
+}
+
+.resize-w {
+    left: -3px;
+}
+
+.resize-ne,
+.resize-nw,
+.resize-se,
+.resize-sw {
+    width: 12px;
+    height: 12px;
+}
+
+.resize-ne {
+    top: -3px;
+    right: -3px;
+    cursor: nesw-resize;
+}
+
+.resize-nw {
+    top: -3px;
+    left: -3px;
+    cursor: nwse-resize;
+}
+
+.resize-se {
+    bottom: -3px;
+    right: -3px;
+    cursor: nwse-resize;
+}
+
+.resize-sw {
+    bottom: -3px;
+    left: -3px;
+    cursor: nesw-resize;
+}
+
+/* Example year buttons */
+.year-button {
+    padding: 10px 15px;
+    cursor: pointer;
+    user-select: none;
+}
+
