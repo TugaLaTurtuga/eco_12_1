@@ -493,10 +493,6 @@ textarea {
     color: #fff;
 }
 
-.calc-checkbox-label:has(.calc-checkbox:checked) {
-    font-weight: bold;
-}
-
 .calc-checkbox {
     appearance: none;
     width: 14px;
