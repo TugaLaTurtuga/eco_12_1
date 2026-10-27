@@ -37,7 +37,12 @@
             <div class="sheet-parent">
                 <div id="sheet-container"></div>
                 <div id="sheet-organizer">
-                    <div class="table-organizer">
+                    <div class="changer">
+                        <button type="button" class="changer-btn active" id="btn-show-organizer">Tabela</button>
+                        <button type="button" class="changer-btn" id="btn-show-calculator">Calculadora</button>
+                    </div>
+
+                    <div class="table-organizer" id="table-organizer">
                         <div class="organizer-header">
                             <span class="organizer-title">Organizador</span>
                         </div>
@@ -84,10 +89,71 @@
 
                         <button type="button" class="organizer-reset-btn" id="organizer-reset">Limpar seleção</button>
                     </div>
-                    <div class="table-calculator"></div>
-                    <div class="changer">
-                        <button>tabela</button>
-                        <button>calculadora</button>
+
+                    <div class="table-calculator" id="table-calculator" style="display: none;">
+                        <div class="organizer-header">
+                            <span class="organizer-title">Calculadora</span>
+                        </div>
+
+                        <div class="calc-active-table" id="calc-active-table">
+                            <span class="calc-table-label">Tabela em Uso:</span>
+                            <span class="calc-table-name" id="calc-table-name">Aguardando tabela...</span>
+                        </div>
+
+                        <div class="calc-group">
+                            <label class="calc-label" for="calc-gross">Salário Bruto (€)</label>
+                            <div class="calc-input-wrapper">
+                                <input type="number" id="calc-gross" class="calc-input" placeholder="ex: 1500" value="1500" min="0" step="50" />
+                                <span class="calc-currency">€</span>
+                            </div>
+                        </div>
+
+                        <div class="calc-group">
+                            <label class="calc-label" for="calc-deps">Número de Dependentes</label>
+                            <div class="calc-dependents-control">
+                                <button type="button" class="calc-dep-btn" id="calc-dep-minus">-</button>
+                                <input type="number" id="calc-deps" class="calc-input calc-input-dep" value="0" min="0" max="10" />
+                                <button type="button" class="calc-dep-btn" id="calc-dep-plus">+</button>
+                            </div>
+                        </div>
+
+                        <div class="calc-group">
+                            <label class="calc-checkbox-label">
+                                <input type="checkbox" id="calc-sindicato" class="calc-checkbox" />
+                                <span>Sindicato (1% opcional)</span>
+                            </label>
+                        </div>
+
+                        <div class="calc-breakdown">
+                            <div class="calc-row">
+                                <span class="calc-row-label">Salário Bruto:</span>
+                                <span class="calc-row-value" id="res-gross">1.500,00 €</span>
+                            </div>
+                            <div class="calc-row">
+                                <span class="calc-row-label">Seg. Social (TSU 11%):</span>
+                                <span class="calc-row-value calc-deduction" id="res-tsu">- 165,00 €</span>
+                            </div>
+                            <div class="calc-row">
+                                <span class="calc-row-label">Retenção IRS:</span>
+                                <span class="calc-row-value calc-deduction" id="res-irs">- 0,00 €</span>
+                            </div>
+                            <div class="calc-row calc-subtext" id="res-irs-formula">
+                                <span id="res-irs-formula-text">Fórmula: Remuneração x Taxa - Parcela a abater - Parcela adicional x dependentes</span>
+                            </div>
+                            <div class="calc-row" id="calc-row-union" style="display: none;">
+                                <span class="calc-row-label">Sindicato (1%):</span>
+                                <span class="calc-row-value calc-deduction" id="res-union">- 15,00 €</span>
+                            </div>
+                            <div class="calc-divider"></div>
+                            <div class="calc-row">
+                                <span class="calc-row-label">Total Descontos:</span>
+                                <span class="calc-row-value calc-deduction" id="res-total-deductions">- 165,00 €</span>
+                            </div>
+                            <div class="calc-result-box">
+                                <span class="calc-result-label">Salário Líquido:</span>
+                                <span class="calc-result-value" id="res-net">1.335,00 €</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

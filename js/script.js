@@ -58,6 +58,8 @@ function setWindowOpen(isOpen) {
                 sheetContainer.innerHTML = XLSX.utils.sheet_to_html(worksheet, { editable: false });
                 headerDiv.textContent = `${year} — ${sheetName}`;
                 applySheetOrganizer();
+                updateCalculatorTableInfo();
+                calculateSalary();
             } catch (error) {
                 if (requestId !== currentRequest) return;
                 console.error("Failed to load Excel file:", error);
@@ -239,7 +241,14 @@ function setWindowOpen(isOpen) {
                     btn.classList.add("active");
 
                     if (question === "marital") organizerState.marital = val;
-                    else if (question === "deps") organizerState.deps = val;
+                    else if (question === "deps") {
+                        organizerState.deps = val;
+                        if (val === "sem_dependentes" && calcDepsInput) {
+                            calcDepsInput.value = 0;
+                        } else if (val === "com_dependentes" && calcDepsInput && parseInt(calcDepsInput.value, 10) === 0) {
+                            calcDepsInput.value = 1;
+                        }
+                    }
                     else if (question === "holders") organizerState.holders = val;
                     else if (question === "disab") {
                         organizerState.disab = (val === "com_deficiencia");
@@ -474,11 +483,345 @@ function setWindowOpen(isOpen) {
                     const displayMatch = (bestBranch || bestRow.textContent).replace(/\s+/g, " ").trim();
                     organizerStatusEl.textContent = `Focado em: ${displayMatch.slice(0, 70)}`;
                 }
+
+                currentActiveTable = {
+                    row: bestRow,
+                    name: (bestBranch || bestRow.textContent).replace(/\s+/g, " ").trim()
+                };
+                updateCalculatorTableInfo();
+                calculateSalary();
             } else {
                 if (organizerStatusEl) {
                     organizerStatusEl.className = "organizer-status";
                     organizerStatusEl.textContent = "Nenhuma tabela encontrada para os critérios selecionados.";
                 }
+
+                currentActiveTable = null;
+                updateCalculatorTableInfo();
+                calculateSalary();
             }
+        }
+
+        // ==========================================
+        // View Changer (Tabela vs Calculadora)
+        // ==========================================
+        const btnShowOrganizer = document.querySelector("#btn-show-organizer");
+        const btnShowCalculator = document.querySelector("#btn-show-calculator");
+        const tableOrganizerView = document.querySelector("#table-organizer");
+        const tableCalculatorView = document.querySelector("#table-calculator");
+
+        if (btnShowOrganizer && btnShowCalculator) {
+            btnShowOrganizer.addEventListener("click", () => {
+                btnShowOrganizer.classList.add("active");
+                btnShowCalculator.classList.remove("active");
+                if (tableOrganizerView) tableOrganizerView.style.display = "flex";
+                if (tableCalculatorView) tableCalculatorView.style.display = "none";
+            });
+
+            btnShowCalculator.addEventListener("click", () => {
+                btnShowCalculator.classList.add("active");
+                btnShowOrganizer.classList.remove("active");
+                if (tableOrganizerView) tableOrganizerView.style.display = "none";
+                if (tableCalculatorView) tableCalculatorView.style.display = "flex";
+                updateCalculatorTableInfo();
+                calculateSalary();
+            });
+        }
+
+        // ==========================================
+        // Salary & Deductions Calculator Logic
+        // ==========================================
+        let currentActiveTable = null; // { row: Element, name: string }
+
+        const calcGrossInput = document.querySelector("#calc-gross");
+        const calcDepsInput = document.querySelector("#calc-deps");
+        const calcDepMinusBtn = document.querySelector("#calc-dep-minus");
+        const calcDepPlusBtn = document.querySelector("#calc-dep-plus");
+        const calcUnionCheckbox = document.querySelector("#calc-sindicato");
+        const calcTableNameEl = document.querySelector("#calc-table-name");
+
+        const resGrossEl = document.querySelector("#res-gross");
+        const resTsuEl = document.querySelector("#res-tsu");
+        const resIrsEl = document.querySelector("#res-irs");
+        const resIrsFormulaTextEl = document.querySelector("#res-irs-formula-text");
+        const resUnionEl = document.querySelector("#res-union");
+        const calcRowUnionEl = document.querySelector("#calc-row-union");
+        const resTotalDeductionsEl = document.querySelector("#res-total-deductions");
+        const resNetEl = document.querySelector("#res-net");
+
+        function formatEUR(val) {
+            return val.toLocaleString("pt-PT", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }) + " €";
+        }
+
+        function getDefaultTable() {
+            const rows = Array.from(sheetContainer.querySelectorAll("tr"));
+            for (const r of rows) {
+                const t = (r.textContent || "").trim();
+                if (/(?:tabela\s+[ivx]+|n[ãa]o\s+casado|casado)/i.test(t) &&
+                    !/(?:at[ée]|superior|remunera[çc][ãa]o)/i.test(t)) {
+                    return { row: r, name: t.replace(/\s+/g, " ").trim() };
+                }
+            }
+            return null;
+        }
+
+        function updateCalculatorTableInfo() {
+            const active = currentActiveTable || getDefaultTable();
+            if (calcTableNameEl) {
+                if (active && active.name) {
+                    calcTableNameEl.textContent = active.name.slice(0, 65);
+                } else {
+                    calcTableNameEl.textContent = "Nenhuma tabela carregada";
+                }
+            }
+        }
+
+        function parseNum(str) {
+            if (str === null || str === undefined || str === "") return 0;
+
+            // SheetJS renders the source workbook using its number formats.  That
+            // means a rate can be rendered as "47.17%" and a monetary value as
+            // either "1,272.31" or "1.272,31".  These must not be parsed with
+            // parseFloat directly: 47.17% is 0.4717, and both currency examples
+            // represent 1272.31.
+            let value = String(str).trim();
+            const isPercent = value.includes("%");
+            value = value.replace(/[^0-9,.-]/g, "");
+
+            const lastComma = value.lastIndexOf(",");
+            const lastDot = value.lastIndexOf(".");
+            const decimalIndex = Math.max(lastComma, lastDot);
+
+            if (decimalIndex !== -1) {
+                const hasBothSeparators = lastComma !== -1 && lastDot !== -1;
+                const fraction = value.slice(decimalIndex + 1);
+                // Excel uses a thousands separator without decimals for the
+                // bracket limits (for example, "1,819").
+                const isThousandsOnly = !hasBothSeparators && fraction.length === 3 &&
+                    !/^[-+]?0[.,]/.test(value);
+
+                if (isThousandsOnly) {
+                    value = value.replace(/[.,]/g, "");
+                } else {
+                    const integerPart = value.slice(0, decimalIndex).replace(/[.,]/g, "");
+                    const decimalPart = fraction.replace(/[.,]/g, "");
+                    value = `${integerPart}.${decimalPart}`;
+                }
+            }
+
+            const parsed = parseFloat(value) || 0;
+            return isPercent ? parsed / 100 : parsed;
+        }
+
+        function isBracketRow(rowEl) {
+            if (!rowEl) return false;
+            const text = (rowEl.textContent || "").trim().toLowerCase();
+            if (!text) return false;
+            return text.includes("até") || text.includes("ate") || text.includes("superior");
+        }
+
+        function getBracketRowsForTable(tableRow) {
+            if (!tableRow) return [];
+            const brackets = [];
+            let curr = tableRow;
+
+            // Step 1: Advance to the first bracket row belonging to this table
+            while (curr) {
+                if (isBracketRow(curr)) {
+                    break;
+                }
+                // If we hit another table header before finding any bracket row, stop
+                if (curr !== tableRow) {
+                    const text = (curr.textContent || "").trim();
+                    if (/tabela\s+[ivx]+/i.test(text)) {
+                        break;
+                    }
+                }
+                curr = curr.nextElementSibling;
+            }
+
+            // Step 2: Collect all bracket rows for this table
+            while (curr) {
+                if (isBracketRow(curr)) {
+                    const cells = Array.from(curr.querySelectorAll("td, th"))
+                        .map((c) => c.textContent.trim())
+                        .filter(Boolean);
+                    if (cells.length > 0) {
+                        brackets.push(cells);
+                    }
+                } else {
+                    const text = (curr.textContent || "").trim();
+                    // Stop when reaching a non-empty, non-bracket row (e.g. formula row or next table)
+                    if (text.length > 0) {
+                        break;
+                    }
+                }
+                curr = curr.nextElementSibling;
+            }
+            return brackets;
+        }
+
+        function computeIRS(salary, deps) {
+            const active = currentActiveTable || getDefaultTable();
+            if (!active || !active.row) {
+                return { irs: 0, rate: 0 };
+            }
+
+            const bracketRows = getBracketRowsForTable(active.row);
+            if (bracketRows.length === 0) {
+                return { irs: 0, rate: 0 };
+            }
+
+            // Find the bracket that matches salary
+            let matched = null;
+            for (const cells of bracketRows) {
+                const firstCell = (cells[0] || "").toLowerCase();
+                const isSup = firstCell.includes("superior");
+                let limit = 0;
+                for (let i = 1; i < Math.min(3, cells.length); i++) {
+                    const num = parseNum(cells[i]);
+                    if (num > 0) {
+                        limit = num;
+                        break;
+                    }
+                }
+                if (isSup) {
+                    if (salary > limit) {
+                        matched = cells;
+                        break;
+                    }
+                } else {
+                    if (salary <= limit) {
+                        matched = cells;
+                        break;
+                    }
+                }
+            }
+
+            if (!matched && bracketRows.length > 0) {
+                matched = bracketRows[bracketRows.length - 1];
+            }
+            if (!matched) return { irs: 0, rate: 0 };
+
+            const line = matched.join(" ");
+
+            // Modern marginal rate system (post-2023)
+            // Fórmula a aplicar: Remuneração x Taxa - Parcela a abater - Parcela adicional a abater x nº dependentes
+            const isModern = /f[óo]rmula|parcela\s+a\s+abater|taxa\s+marginal/i.test(sheetContainer.textContent || "") ||
+                line.includes("- R") || matched.length > 8;
+
+            if (isModern) {
+                const rate = parseNum(matched[2]);
+                let parcela = 0;
+                let parcelaAdicional = parseNum(matched[matched.length - 2]);
+
+                if (line.includes("- R")) {
+                    let factor = 1.0;
+                    let upper = salary;
+                    for (let i = 0; i < matched.length; i++) {
+                        if (matched[i] === "x" && i + 1 < matched.length) {
+                            const f = parseNum(matched[i + 1]);
+                            if (f > 0) factor = f;
+                        }
+                        if (matched[i].includes("- R") && i > 0) {
+                            const u = parseNum(matched[i - 1]);
+                            if (u > 0) upper = u;
+                        }
+                    }
+                    parcela = rate * factor * Math.max(0, upper - salary);
+                } else {
+                    parcela = parseNum(matched[3]);
+                }
+
+                // Fórmula a aplicar: Remuneração x Taxa - Parcela a abater - Parcela adicional a abater x nº dependentes
+                const irs = Math.max(0, (salary * rate) - parcela - (parcelaAdicional * deps));
+                const formulaText = `(${formatEUR(salary)} × ${(rate * 100).toFixed(2)}%) - ${formatEUR(parcela)} - (${formatEUR(parcelaAdicional)} × ${deps})`;
+                return { irs, rate, parcela, parcelaAdicional, isModern: true, formulaText };
+            } else {
+                // Classic effective rate system (pre-2024)
+                const rates = [];
+                for (let i = 2; i < matched.length; i++) {
+                    const v = parseNum(matched[i]);
+                    if (!isNaN(v)) rates.push(v);
+                }
+                const depIdx = Math.min(deps, rates.length - 1);
+                const rate = rates[depIdx] || 0;
+                const irs = salary * rate;
+                const formulaText = `${formatEUR(salary)} × ${(rate * 100).toFixed(2)}% (${deps} dependentes)`;
+                return { irs, rate, isModern: false, formulaText };
+            }
+        }
+
+        function calculateSalary() {
+            if (!calcGrossInput) return;
+
+            const grossSalary = Math.max(0, parseFloat(calcGrossInput.value) || 0);
+            const dependents = Math.max(0, parseInt(calcDepsInput ? calcDepsInput.value : 0, 10) || 0);
+            const hasUnion = calcUnionCheckbox ? calcUnionCheckbox.checked : false;
+
+            // 1. TSU (11%)
+            const tsu = grossSalary * 0.11;
+
+            // 2. Sindicato (1% opcional)
+            const union = hasUnion ? grossSalary * 0.01 : 0;
+
+            // 3. IRS: Fórmula a aplicar: Remuneração x Taxa - Parcela a abater - Parcela adicional a abater x nº dependentes
+            const irsResult = computeIRS(grossSalary, dependents);
+            const irs = irsResult.irs;
+            const effectiveRate = grossSalary > 0 ? (irs / grossSalary) * 100 : 0;
+
+            // 4. Totals
+            const totalDeductions = tsu + irs + union;
+            const netSalary = Math.max(0, grossSalary - totalDeductions);
+
+            // Update DOM
+            if (resGrossEl) resGrossEl.textContent = formatEUR(grossSalary);
+            if (resTsuEl) resTsuEl.textContent = `- ${formatEUR(tsu)}`;
+            if (resIrsEl) resIrsEl.textContent = `- ${formatEUR(irs)}`;
+            if (resIrsFormulaTextEl) {
+                resIrsFormulaTextEl.textContent = `Fórmula: ${irsResult.formulaText || ""}`;
+            }
+
+            if (calcRowUnionEl) {
+                if (hasUnion) {
+                    calcRowUnionEl.style.display = "flex";
+                    if (resUnionEl) resUnionEl.textContent = `- ${formatEUR(union)}`;
+                } else {
+                    calcRowUnionEl.style.display = "none";
+                }
+            }
+
+            if (resTotalDeductionsEl) resTotalDeductionsEl.textContent = `- ${formatEUR(totalDeductions)}`;
+            if (resNetEl) resNetEl.textContent = formatEUR(netSalary);
+        }
+
+        // Calculator Event Listeners
+        if (calcGrossInput) {
+            calcGrossInput.addEventListener("input", calculateSalary);
+        }
+        if (calcDepsInput) {
+            calcDepsInput.addEventListener("input", calculateSalary);
+        }
+        if (calcDepMinusBtn && calcDepsInput) {
+            calcDepMinusBtn.addEventListener("click", () => {
+                let val = parseInt(calcDepsInput.value, 10) || 0;
+                if (val > 0) {
+                    calcDepsInput.value = val - 1;
+                    calculateSalary();
+                }
+            });
+        }
+        if (calcDepPlusBtn && calcDepsInput) {
+            calcDepPlusBtn.addEventListener("click", () => {
+                let val = parseInt(calcDepsInput.value, 10) || 0;
+                calcDepsInput.value = val + 1;
+                calculateSalary();
+            });
+        }
+        if (calcUnionCheckbox) {
+            calcUnionCheckbox.addEventListener("change", calculateSalary);
         }
 
